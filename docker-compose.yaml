@@ -1,0 +1,18 @@
+version: "3.8"
+services:
+  app:
+    image: nhan2804/vncdc-duplicator:v1.0.0
+
+    build:
+      context: ./
+      dockerfile: Dockerfile
+    # deploy:
+    #   placement:
+    #     constraints:
+    #       - node.role == manager
+    volumes:
+      # - ./nginx:/etc/nginx/conf.d
+      - /var/run/docker.sock:/var/run/docker.sock
+    # - ./certbot/www:/var/www/certbot
+    ports:
+      - "8080:8080"

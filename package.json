@@ -1,0 +1,8 @@
+{
+  "dependencies": {
+    "dockerode": "^4.0.7",
+    "express": "^5.1.0",
+    "http-proxy-middleware": "^3.0.5",
+    "portscanner": "^2.2.0"
+  }
+}
