@@ -1537,6 +1537,7 @@ const express = require("express");
 const Docker = require("dockerode");
 const portscanner = require("portscanner");
 const { createProxyMiddleware } = require("http-proxy-middleware");
+const axios = require("axios");
 
 const docker = new Docker({});
 const app = express();
@@ -1610,7 +1611,8 @@ app.post("/containers", async (req, res) => {
       },
       NetworkingConfig: {
         EndpointsConfig: {
-          web: {
+          "vncdc-duplicator_web": {
+            Aliases: [containerName],
             // Optional: set IP or aliases
             // IPAMConfig: { IPv4Address: "172.20.0.10" },
             // Aliases: ["my-container-alias"]
@@ -1624,7 +1626,11 @@ app.post("/containers", async (req, res) => {
       message: `Container ${containerName} created and started.`,
     });
   } catch (error) {
-    return res.status(500).json({ error: error.message });
+    let message = error.message;
+    if (message?.includes("is already in use by container")) {
+      message = "Dịch vụ này đã tồn tại!";
+    }
+    return res.status(500).json({ error: message });
   }
 });
 
@@ -1653,7 +1659,7 @@ app.get("/check-port-range", async (req, res) => {
     return res.status(500).json({ error: error.message });
   }
 });
-app.use("/", (req, res, next) => {
+app.use("/", async (req, res) => {
   const id = req.header("X-ID");
 
   if (!id) {
@@ -1661,20 +1667,34 @@ app.use("/", (req, res, next) => {
   }
 
   const targetHost = `http://${getContainerName(id)}:1306`;
+  const targetUrl = new URL(req.originalUrl, targetHost);
 
-  // Create a proxy middleware on the fly
-  const proxy = createProxyMiddleware({
-    target: targetHost,
-    changeOrigin: true,
-    pathRewrite: (path, req) => path, // keep original path
-    onError(err, req, res) {
-      console.error(`Proxy error to ${targetHost}:`, err.message);
-      res.status(502).send("Bad Gateway");
-    },
-  });
+  try {
+    const axiosConfig = {
+      method: req.method?.toLowerCase(),
+      url: targetUrl.href,
+      headers: {
+        ...req.headers,
+      },
+      data: req.body,
+      //   responseType: "stream",
+    };
 
-  return proxy(req, res, next);
+    const { data } = await axios(axiosConfig);
+    // console.log(req.method);
+
+    // const { data } = await axios({
+    //   method: "get",
+    //   url: `http://scrape-67bdcadacd2e857e4981d16c:1306/search?patientId=107150720250052`,
+    // });
+
+    res.status(200).json(data);
+  } catch (err) {
+    console.error(`Proxy error to ${targetHost}:`, err.message);
+    res.status(502).send({ message: "Bad Gateway" });
+  }
 });
+
 // Start server
 const PORT = 8080;
 app.listen(PORT, () => {
