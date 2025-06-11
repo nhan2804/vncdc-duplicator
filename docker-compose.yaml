@@ -2,7 +2,8 @@ version: "3.8"
 services:
   app:
     image: nhan2804/vncdc-duplicator:v1.0.0
-
+    networks:
+      - web
     build:
       context: ./
       dockerfile: Dockerfile
@@ -16,3 +17,5 @@ services:
     # - ./certbot/www:/var/www/certbot
     ports:
       - "8080:8080"
+networks:
+  web:

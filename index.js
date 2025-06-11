@@ -1536,6 +1536,7 @@ const profile = {
 const express = require("express");
 const Docker = require("dockerode");
 const portscanner = require("portscanner");
+const { createProxyMiddleware } = require("http-proxy-middleware");
 
 const docker = new Docker({});
 const app = express();
@@ -1551,7 +1552,37 @@ const buildEnv = (credentials, taskId = "manual") => [
   `TIEMCHUNG_USERNAME=${credentials.username}`,
   `TIEMCHUNG_PASSWORD=${credentials.password}`,
 ];
+async function pullIfNeeded(imageName) {
+  try {
+    // Try to inspect image
+    await docker.getImage(imageName).inspect();
+    console.log(`✅ Image ${imageName} already exists`);
+  } catch (err) {
+    if (err.statusCode === 404) {
+      console.log(`🔄 Pulling image ${imageName}...`);
+      await new Promise((resolve, reject) => {
+        docker.pull(imageName, (err, stream) => {
+          if (err) return reject(err);
+          docker.modem.followProgress(stream, resolve, (event) => {
+            process.stdout.write(
+              `  → ${event.status || ""} ${event.id || ""}\r`
+            );
+          });
+        });
+      });
+      console.log(`✅ Image ${imageName} pulled`);
+    } else {
+      throw err;
+    }
+  }
+}
 
+// Create container (after pull)
+async function createContainerSafe(opts) {
+  const image = opts.Image;
+  await pullIfNeeded(image);
+  return await docker.createContainer(opts);
+}
 // Endpoint: create/init container
 app.post("/containers", async (req, res) => {
   const { id, credentials, image } = req.body;
@@ -1563,19 +1594,28 @@ app.post("/containers", async (req, res) => {
   const containerName = getContainerName(id);
 
   try {
-    const container = await docker.createContainer({
+    const container = await createContainerSafe({
       name: containerName,
       Image: image,
       Env: buildEnv(credentials),
       HostConfig: {
         SecurityOpt: [`seccomp=${JSON.stringify(profile)}`],
         RestartPolicy: { Name: "always" },
-        PortBindings: {
-          "1306/tcp": [{ HostPort: "3001" }], // You can make this dynamic
-        },
+        // PortBindings: {
+        //   "1306/tcp": [{ HostPort: "3001" }],
+        // },
       },
       ExposedPorts: {
         "1306/tcp": {},
+      },
+      NetworkingConfig: {
+        EndpointsConfig: {
+          web: {
+            // Optional: set IP or aliases
+            // IPAMConfig: { IPv4Address: "172.20.0.10" },
+            // Aliases: ["my-container-alias"]
+          },
+        },
       },
     });
 
