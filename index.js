@@ -1536,7 +1536,6 @@ const profile = {
 const express = require("express");
 const Docker = require("dockerode");
 const portscanner = require("portscanner");
-const { createProxyMiddleware } = require("http-proxy-middleware");
 const axios = require("axios");
 
 const docker = new Docker({});
@@ -1593,6 +1592,13 @@ app.post("/containers", async (req, res) => {
   }
 
   const containerName = getContainerName(id);
+  const container = docker.getContainer(containerName);
+  let message = "";
+  if (container) {
+    await container.stop();
+    await container.remove();
+    message = "Đã khởi tạo lại!";
+  }
 
   try {
     const container = await createContainerSafe({
@@ -1624,11 +1630,15 @@ app.post("/containers", async (req, res) => {
     await container.start();
     return res.json({
       message: `Container ${containerName} created and started.`,
+      data: {
+        message: message,
+      },
     });
   } catch (error) {
     let message = error.message;
     if (message?.includes("is already in use by container")) {
       message = "Dịch vụ này đã tồn tại!";
+      return res.status(400).json({ error: message });
     }
     return res.status(500).json({ error: message });
   }
