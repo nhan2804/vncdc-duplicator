@@ -1586,20 +1586,25 @@ async function createContainerSafe(opts) {
 // Endpoint: create/init container
 app.post("/containers", async (req, res) => {
   const { id, credentials, image } = req.body;
-
   if (!id || !credentials?.username || !credentials?.password) {
     return res.status(400).json({ error: "Missing id or credentials" });
   }
-
   const containerName = getContainerName(id);
-  const container = docker.getContainer(containerName);
+  let container = undefined;
+  try {
+    container = docker.getContainer(containerName);
+  } catch (error) {
+    console.log("1.", error);
+  }
   let message = "";
   if (container) {
-    await container.stop();
-    await container.remove();
-    message = "Đã khởi tạo lại!";
+    try {
+      await container.remove({ force: true });
+      message = "Đã khởi tạo lại!";
+    } catch (error) {
+      console.log("2.", error);
+    }
   }
-
   try {
     const container = await createContainerSafe({
       name: containerName,
@@ -1701,7 +1706,9 @@ app.use("/", async (req, res) => {
     res.status(200).json(data);
   } catch (err) {
     console.error(`Proxy error to ${targetHost}:`, err.message);
-    res.status(502).send({ message: "Bad Gateway" });
+    res
+      .status(err?.status || 502)
+      .send({ message: err?.response?.data?.message || "Bad Gateway" });
   }
 });
 
